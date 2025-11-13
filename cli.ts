@@ -3,11 +3,10 @@
 import axios, { AxiosError } from 'axios';
 import yargs from 'yargs/yargs';
 import { hideBin } from 'yargs/helpers';
-// Import readline for the interactive shell
 import * as readline from 'readline/promises';
 import { stdin as input, stdout as output } from 'process';
 
-const BASE_URL = 'http://localhost:3000';
+export const BASE_URL = 'http://localhost:3000';
 
 // ANSI Color Codes
 const colors = {
@@ -15,7 +14,7 @@ const colors = {
   red: "\x1b[31m",
   green: "\x1b[32m",
   yellow: "\x1b[33m",
-  blue: "\x1b[34m", // Added blue
+  blue: "\x1b[34m",
   magenta: "\x1b[35m", // Will be used for 'purple'
   cyan: "\x1b[36m",
   magenta_bright: "\x1b[95m",
@@ -244,6 +243,11 @@ export async function main() {
       if (err) console.error(`${colors.red}${err.message}${colors.reset}`);
       else console.error(`${colors.red}${msg}${colors.reset}`);
     });
+
+  if (process.argv.length > 2) {
+    await parser.parse(process.argv.slice(2));
+    return;
+  }
 
   const rl = readline.createInterface({ input, output });
   console.log(`${colors.green}CLI Tool started. Type "run", "help", or "q" to quit.${colors.reset}\n`);

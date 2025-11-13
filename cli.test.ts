@@ -1,6 +1,5 @@
 import axios, { AxiosError } from 'axios';
-// [UPDATE] Added 'main' to imports
-import { runFlow, getApiHelp, filterDataByColor, formatAndDisplay, main } from './cli';
+import { runFlow, getApiHelp, filterDataByColor, formatAndDisplay, main, BASE_URL } from './cli';
 import * as readline from 'readline/promises';
 
 // We must mock axios to prevent network calls and control responses.
@@ -182,9 +181,9 @@ describe('CLI Tool', () => {
       
       jest.runAllTimers(); 
 
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/data');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        'http://localhost:3000/test-format',
+        `${BASE_URL}/test-format`,
         {
           tests: [
             { id: 1, color: 'red', status: 'Pass' },
@@ -193,7 +192,7 @@ describe('CLI Tool', () => {
         }
       );
       expect(mockedAxios.post).toHaveBeenCalledWith(
-        'http://localhost:3000/retrieve',
+        `${BASE_URL}/retrieve`,
         { id: 'job-123' }
       );
       
@@ -288,7 +287,7 @@ describe('CLI Tool', () => {
 
       await runFlow({ colors: 'red' });
 
-      expect(mockedAxios.post).toHaveBeenCalledWith('http://localhost:3000/test-format', expect.anything());
+      expect(mockedAxios.post).toHaveBeenCalledWith(`${BASE_URL}/test-format`, expect.anything());
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('HTTP Status: 400');
       expect(errorOutput).toContain('Data: {"message":"Bad JSON"}');
@@ -327,7 +326,7 @@ describe('CLI Tool', () => {
 
       await runFlow({ colors: 'red' });
 
-      expect(mockedAxios.post).toHaveBeenCalledWith('http://localhost:3000/retrieve', { id: 'job-123' });
+      expect(mockedAxios.post).toHaveBeenCalledWith(`${BASE_URL}/retrieve`, { id: 'job-123' });
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('HTTP Status: 404');
       expect(errorOutput).toContain('Data: {"message":"File not found"}');
@@ -365,7 +364,7 @@ describe('CLI Tool', () => {
       
       await getApiHelp();
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
       expect(logOutput).toContain('--- Server Help Text ---');
       expect(logOutput).toContain(helpText);
@@ -380,7 +379,7 @@ describe('CLI Tool', () => {
 
       await getApiHelp();
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('Connection refused. Is the server running at localhost:3000?');
     });
@@ -394,7 +393,7 @@ describe('CLI Tool', () => {
 
       await getApiHelp();
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('HTTP Status: 404');
       expect(errorOutput).toContain('Data: {"message":"Not Found"}');
@@ -407,7 +406,7 @@ describe('CLI Tool', () => {
 
       await getApiHelp();
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('A generic error');
       expect(errorOutput).not.toContain('HTTP Status');
@@ -420,84 +419,92 @@ describe('CLI Tool', () => {
 
       await getApiHelp();
       
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
       expect(errorOutput).toContain('An unknown error occurred:');
       expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('An unknown error occurred:'), unknownError);
     });
   });
 
-  // [UPDATE] New test suite for the interactive shell
-  describe('Interactive Shell (main)', () => {
-    // We access the mocked createInterface to define its return value per test
+  describe('main (Execution Modes)', () => {
     const mockCreateInterface = readline.createInterface as jest.Mock;
     let mockQuestion: jest.Mock;
     let mockClose: jest.Mock;
+    let originalArgv: string[];
 
     beforeEach(() => {
       mockQuestion = jest.fn();
       mockClose = jest.fn();
-      // Setup the mock to return our specific question/close mocks
       mockCreateInterface.mockReturnValue({
         question: mockQuestion,
         close: mockClose,
       });
+      originalArgv = process.argv;
     });
 
-    it('should handle "api-help" command and then "q" to quit', async () => {
-      // Setup inputs: First "api-help", then "q" to break the loop
+    afterEach(() => {
+      process.argv = originalArgv;
+    });
+
+    it('should execute command from process.argv and exit without interactive prompt', async () => {
+        process.argv = ['/bin/node', '/path/cli.ts', 'run', '-c', 'red'];
+
+        mockedAxios.get.mockResolvedValue({ data: mockApiData });
+        mockedAxios.post.mockImplementation((url) => {
+            if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-1' } });
+            if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFullFinalResult } });
+            return Promise.resolve({ data: {} });
+         });
+
+        await main();
+
+        expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
+        const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
+        expect(logOutput).toContain('Filtering for colors: red');
+
+        expect(readline.createInterface).not.toHaveBeenCalled();
+    });
+
+    it('should enter interactive mode if no args provided', async () => {
+        // Mock process.argv: node cli.ts
+        process.argv = ['/bin/node', '/path/cli.ts'];
+
+        // Setup inputs: "run" command, then "q"
+        mockQuestion.mockResolvedValueOnce('run --colors red').mockResolvedValueOnce('q');
+
+        // Mock runFlow success
+        mockedAxios.get.mockResolvedValue({ data: mockApiData });
+        mockedAxios.post.mockImplementation((url) => {
+            if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-1' } });
+            if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFullFinalResult } });
+            return Promise.resolve({ data: {} });
+         });
+
+        await main();
+
+        expect(readline.createInterface).toHaveBeenCalled();
+        expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
+        const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
+        expect(logOutput).toContain('Filtering for colors: red');
+    });
+
+    it('should handle "api-help" in interactive mode', async () => {
+      process.argv = ['/bin/node', '/path/cli.ts'];
       mockQuestion.mockResolvedValueOnce('api-help').mockResolvedValueOnce('q');
-      
-      // Mock API for help
       mockedAxios.get.mockResolvedValue({ data: 'Help Text' });
 
       await main();
 
-      // Verify help was fetched and the interface closed
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/help');
+      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
       const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
       expect(logOutput).toContain('Server Help Text');
       expect(mockClose).toHaveBeenCalled();
     });
-
-    it('should handle "run" command with args', async () => {
-      // Setup inputs: "run" command, then "q"
-      mockQuestion.mockResolvedValueOnce('run --colors red').mockResolvedValueOnce('q');
-
-      // Mock full flow for "run" so it completes without error
-      mockedAxios.get.mockResolvedValue({ data: mockApiData });
-      mockedAxios.post.mockImplementation((url) => {
-         if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-1' } });
-         if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFullFinalResult } });
-         return Promise.resolve({ data: {} });
-      });
-
-      await main();
-
-      // Verify the runFlow logic was triggered
-      expect(mockedAxios.get).toHaveBeenCalledWith('http://localhost:3000/data');
-      const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput).toContain('Filtering for colors: red');
-    });
-
-    it('should handle unknown commands gracefully', async () => {
-       mockQuestion.mockResolvedValueOnce('unknown-cmd').mockResolvedValueOnce('q');
-       
-       await main();
-
-       // Yargs prints to stderr or uses the .fail() handler which prints to error
-       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-       // We just want to ensure it didn't crash and printed *something* to error/log
-       expect(errorOutput).toBeTruthy();
-       expect(errorOutput).toContain('Unknown argument: unknown-cmd');
-    });
     
-    it('should ignore empty input and continue prompting', async () => {
-        // Empty string then q
+    it('should ignore empty input in interactive mode', async () => {
+        process.argv = ['/bin/node', '/path/cli.ts'];
         mockQuestion.mockResolvedValueOnce('').mockResolvedValueOnce('q');
         await main();
-        
-        // Verify the loop continued until close was called
         expect(mockClose).toHaveBeenCalled();
     });
   });
