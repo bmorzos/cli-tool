@@ -29,6 +29,8 @@ export interface TestItem {
   id: number;
   value: string;
   color: string;
+  date: string;
+  description: string;
   status: 'Pass' | 'Fail' | 'Pending' | 'Skipped';
   errorDetails?: string;
 }
@@ -66,13 +68,13 @@ const addSeparator = (char: string, color: string, count: number = 50) => addLin
 
 function displayBlockHeader(color: string = colors.blue) {
   formattedLines = [];
-  addSeparator(' ', colors.blueOnBlue, 63);
-  addLine(`  ██████  ███    ██ ███████ ██████  ██████  ██ ███████ ███████ `, color);
-  addLine(` ██    ██ ████   ██ ██      ██   ██ ██   ██ ██ ██      ██      `, color);
-  addLine(` ██    ██ ██ ██  ██ █████   ██████  ██████  ██ █████   █████   `, color);
-  addLine(` ██    ██ ██  ██ ██ ██      ██   ██ ██   ██ ██ ██      ██      `, color);
-  addLine(`  ██████  ██   ████ ███████ ██████  ██   ██ ██ ███████ ██      `, color);
-  addSeparator(' ', colors.blueOnBlue, 63);
+  addSeparator(' ', colors.blueOnBlue, 69);
+  addLine(`     ██████  ███    ██ ███████ ██████  ██████  ██ ███████ ███████    `, color);
+  addLine(`    ██    ██ ████   ██ ██      ██   ██ ██   ██ ██ ██      ██         `, color);
+  addLine(`    ██    ██ ██ ██  ██ █████   ██████  ██████  ██ █████   █████      `, color);
+  addLine(`    ██    ██ ██  ██ ██ ██      ██   ██ ██   ██ ██ ██      ██         `, color);
+  addLine(`     ██████  ██   ████ ███████ ██████  ██   ██ ██ ███████ ██         `, color);
+  addSeparator(' ', colors.blueOnBlue, 69);
   console.log(formattedLines.join('\n'));
 }
 
