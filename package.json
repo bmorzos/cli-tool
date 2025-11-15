@@ -2,9 +2,9 @@
   "name": "onebrief-cli-ts",
   "version": "1.0.0",
   "description": "A TypeScript CLI for the test server",
-  "main": "cli.ts",
+  "main": "qa-cli.ts",
   "scripts": {
-    "start": "ts-node cli.ts",
+    "start": "ts-node qa-cli.ts",
     "test": "jest",
     "test:coverage": "jest --coverage"
   },

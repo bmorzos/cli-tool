@@ -11,5 +11,5 @@
     "outDir": "./dist",
     "isolatedModules": true
   },
-  "include": ["cli.ts", "cli.test.ts"]
+  "include": ["qa-cli.ts", "cli.test.ts"]
 }

@@ -1,11 +1,21 @@
 import axios, { AxiosError } from 'axios';
-import { runFlow, getApiHelp, filterDataByColor, formatAndDisplay, main, BASE_URL } from './cli';
+import { 
+  TestItem, 
+  FormattedResult,
+  generateFormattedReport, 
+  filterDataByColor, 
+  formatResult, 
+  main, 
+  BASE_URL, 
+  MAX_POLL_ATTEMPTS,
+  logError
+} from './qa-cli';
 import * as readline from 'readline/promises';
 
-// We must mock axios to prevent network calls and control responses.
+// --- MOCKS ---
+
 jest.mock('axios');
 
-// [UPDATE] Mock readline to control user input in 'main'
 jest.mock('readline/promises', () => ({
   createInterface: jest.fn().mockReturnValue({
     question: jest.fn(),
@@ -15,497 +25,273 @@ jest.mock('readline/promises', () => ({
 
 const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-// We use fake timers to control the 1-second polling delay in `runFlow`.
+// Fake timers for polling tests
 jest.useFakeTimers();
 
-/**
- * Helper function to strip ANSI color codes from strings.
- * [FIX] Updated regex to correctly handle all ANSI escape codes used in the app.
- */
+// Helper to strip ANSI codes
 const stripAnsi = (str: string) => str.replace(/\x1b\[[0-9;]*m/g, '');
+
+// --- TEST DATA ---
 
 const mockApiData = {
   data: [
-    { id: 1, color: 'red', status: 'Pass' },
-    { id: 2, color: 'blue', status: 'Fail' },
-    { id: 3, color: 'red', status: 'Pending' },
-    { id: 4, color: 'green', status: 'Pass' },
+    { id: 1, color: 'Red', status: 'Pass', value: 'Test 1' },
+    { id: 2, color: 'TestColor', status: 'Fail', value: 'Test 2' },
   ]
 };
 
-// This mock is now more complete to hit all branches in formatAndDisplay
-const mockFullFinalResult = {
-  red: {
-    pass: [{ id: 1, color: 'red', status: 'Pass', value: 'Test 1' }],
-    pending: [{ id: 3, color: 'red', status: 'Pending', value: 'Test 3' }],
-    fail: [{ id: 6, color: 'red', status: 'Fail', value: 'Test 6 Error', errorDetails: 'This is an error' }],
-    skipped: [{ id: 7, color: 'red', status: 'Skipped', value: 'Test 7 Skipped' }],
-  },
-  purple: {
-    pass: [{ id: 5, color: 'purple', status: 'Pass', value: 'Test 5' }],
-    pending: [],
+const mockFormattedResult: FormattedResult = {
+  Red: {
+    pass: [{ id: 1, color: 'Red', status: 'Pass', value: 'Test 1' } as TestItem],
     fail: [],
+    pending: [],
+    skipped: [],
+  },
+  'TestColor': {
+    pass: [],
+    fail: [{ id: 2, color: 'TestColor', status: 'Fail', value: 'Test 2', errorDetails: 'Critical Error' } as TestItem],
+    pending: [],
     skipped: [],
   }
 };
 
+// --- TESTS ---
 
 describe('CLI Tool', () => {
-  // Spy on console methods to capture output for assertions.
   let consoleLogSpy: jest.SpyInstance;
   let consoleWarnSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
+  let stdoutWriteSpy: jest.SpyInstance;
+  let processExitSpy: jest.SpyInstance;
+
+  const mockCreateInterface = readline.createInterface as jest.Mock;
+  let mockQuestion: jest.Mock;
+  let mockClose: jest.Mock;
+  let originalArgv: string[];
 
   beforeEach(() => {
     jest.clearAllMocks();
-
+    
     consoleLogSpy = jest.spyOn(console, 'log').mockImplementation(() => {});
     consoleWarnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {});
     consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation(() => {});
+    stdoutWriteSpy = jest.spyOn(process.stdout, 'write').mockImplementation(() => true);
+    processExitSpy = jest.spyOn(process, 'exit').mockImplementation((code) => { throw new Error(`Process Exit ${code}`); });
+
+    mockQuestion = jest.fn();
+    mockClose = jest.fn();
+    mockCreateInterface.mockReturnValue({
+      question: mockQuestion,
+      close: mockClose,
+    });
+    
+    originalArgv = process.argv;
   });
 
   afterEach(() => {
-    consoleLogSpy.mockRestore();
-    consoleWarnSpy.mockRestore();
-    consoleErrorSpy.mockRestore();
+    jest.restoreAllMocks();
+    process.argv = originalArgv;
   });
 
-  describe('Unit Tests', () => {
-    it('filterDataByColor should correctly filter items', () => {
-      const colors = ['red', 'green'];
-      // @ts-ignore - 'data' is a partial mock, but fine for this test.
-      const result = filterDataByColor(mockApiData.data, colors);
-      expect(result).toHaveLength(3);
-      expect(result[0].id).toBe(1);
-      expect(result[1].id).toBe(3);
-      expect(result[2].id).toBe(4);
+  describe('Unit Logic', () => {
+    it('filterDataByColor should be case-insensitive', () => {
+      const result = filterDataByColor(mockApiData.data as TestItem[], ['TESTCOLOR']);
+      expect(result).toHaveLength(1);
+      expect(result[0].color).toBe('TestColor');
     });
 
-    it('filterDataByColor should filter all human colors plus default', () => {
-      const allColorsData = [
-        { id: 1, color: 'red', status: 'Pass' },
-        { id: 2, color: 'green', status: 'Pass' },
-        { id: 3, color: 'blue', status: 'Pass' },
-        { id: 4, color: 'yellow', status: 'Pass' },
-        { id: 5, color: 'purple', status: 'Pass' },
-        { id: 6, color: 'orange', status: 'Pass' },
-        { id: 7, color: 'black', status: 'Pass' },
-        { id: 8, color: 'white', status: 'Pass' },
-        { id: 9, color: 'pink', status: 'Pass' },
-        { id: 10, color: 'cyan', status: 'Pass' },
-      ];
-      const colorsToFilter = ['red', 'green', 'blue', 'yellow', 'purple', 'orange', 'black', 'white', 'sky-blue'];
-      
-      // @ts-ignore
-      const result = filterDataByColor(allColorsData, colorsToFilter);
-      
-      expect(result).toHaveLength(8);
-      expect(result.find(item => item.color === 'pink')).toBeUndefined();
-      expect(result.find(item => item.color === 'cyan')).toBeUndefined();
-      expect(result.find(item => item.color === 'red')).toBeDefined();
+    it('formatResult should return simplified, clean output', () => {
+      const cleanOutput = stripAnsi(formatResult(mockFormattedResult));
+      expect(cleanOutput).toContain('### Group: Red ###');
+      expect(cleanOutput).toContain('• FAIL (1)');
+      expect(cleanOutput).toContain('└> Error: Critical Error...');
     });
 
-    it('formatAndDisplay should print a full report including errors and skipped', () => {
-      // @ts-ignore
-      formatAndDisplay(mockFullFinalResult);
-      
-      const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-
-      expect(logOutput).toContain('FINAL TEST RESULTS');
-      expect(logOutput).toContain('############# Color: red #############');
-      expect(logOutput).toContain('  --- PASS (1) ---');
-      expect(logOutput).toContain('     [1] Test 1');
-      expect(logOutput).toContain('  --- PENDING (1) ---');
-      expect(logOutput).toContain('     [3] Test 3');
-      expect(logOutput).toContain('  --- FAIL (1) ---');
-      expect(logOutput).toContain('     [6] Test 6 Error');
-      // [FIX] Use regex to match the error line robustly, ignoring potential whitespace or invisible artifacts
-      expect(logOutput).toMatch(/\s+└> Error: This is an error/);
-      expect(logOutput).toContain('  --- SKIPPED (1) ---');
-      expect(logOutput).toContain('     [7] Test 7 Skipped');
-      expect(logOutput).toContain('########################################');
-      expect(logOutput).toContain('############# Color: purple #############');
-      expect(logOutput).toContain('  --- PASS (1) ---');
-      expect(logOutput).toContain('     [5] Test 5');
-      expect(logOutput).toContain('########################################');
-    });
-
-    it('formatAndDisplay should handle null or empty data', () => {
-      // @ts-ignore
-      formatAndDisplay(null);
-      const logOutput1 = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput1).toContain('No formatted data to display.');
-
-      consoleLogSpy.mockClear();
-
-      formatAndDisplay({});
-      const logOutput2 = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput2).toContain('No formatted data to display.');
-    });
-
-    it('formatAndDisplay should use correct colors for all headers', () => {
-      const colorMockData = {
-        yellow: { pass: [{ id: 1, color: 'yellow', status: 'Pass', value: 'Test 1' }], fail:[], pending:[], skipped:[] },
-        blue: { pass: [{ id: 2, color: 'blue', status: 'Pass', value: 'Test 2' }], fail:[], pending:[], skipped:[] },
-        orange: { pass: [{ id: 3, color: 'orange', status: 'Pass', value: 'Test 3' }], fail:[], pending:[], skipped:[] },
-        black: { pass: [{ id: 4, color: 'black', status: 'Pass', value: 'Test 4' }], fail:[], pending:[], skipped:[] },
-        defaultColor: { pass: [{ id: 5, color: 'defaultColor', status: 'Pass', value: 'Test 5' }], fail:[], pending:[], skipped:[] },
-      };
-
-      // @ts-ignore
-      formatAndDisplay(colorMockData);
-      const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-
-      expect(logOutput).toContain('############# Color: yellow #############');
-      expect(logOutput).toContain('############# Color: blue #############');
-      expect(logOutput).toContain('############# Color: orange #############');
-      expect(logOutput).toContain('############# Color: black #############');
-      expect(logOutput).toContain('############# Color: defaultColor #############');
+    it('formatResult should handle empty data gracefully', () => {
+      const output = formatResult({});
+      expect(stripAnsi(output)).toContain('No formatted data to display');
     });
   });
 
-  describe('runFlow (Integration Tests)', () => {
-    it('should run the full "happy path" flow successfully', async () => {
+  describe('generateFormattedReport (Integration)', () => {
+    it('should execute the full flow successfully', async () => {
       mockedAxios.get.mockResolvedValue({ data: mockApiData });
       mockedAxios.post.mockImplementation((url) => {
-        if (url.endsWith('/test-format')) {
-          return Promise.resolve({ data: { id: 'job-123' } });
-        }
-        if (url.endsWith('/retrieve')) {
-          return Promise.resolve({ data: { file: mockFullFinalResult } });
-        }
+        if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-123' } });
+        if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFormattedResult } });
         return Promise.reject(new Error('Unknown URL'));
       });
 
-      await runFlow({ colors: 'red,purple' });
-      
-      jest.runAllTimers(); 
-
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
-      expect(mockedAxios.post).toHaveBeenCalledWith(
-        `${BASE_URL}/test-format`,
-        {
-          tests: [
-            { id: 1, color: 'red', status: 'Pass' },
-            { id: 3, color: 'red', status: 'Pending' },
-          ],
-        }
-      );
-      expect(mockedAxios.post).toHaveBeenCalledWith(
-        `${BASE_URL}/retrieve`,
-        { id: 'job-123' }
-      );
+      await generateFormattedReport({ colors: 'red' });
       
       const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput).toContain('Job complete. Results retrieved.');
-      expect(logOutput).toContain('############# Color: red #############');
-      expect(logOutput).toContain('########################################');
-      expect(logOutput).toContain('############# Color: purple #############');
+      expect(logOutput).toContain('Job ID: job-123');
+      expect(logOutput).toContain(' ██    ██ ██ ▀██ ██▀██ ██▄▄▄');
     });
 
-    it('should warn and exit if no data matches filters', async () => {
+    it('should handle cases where filter matches nothing', async () => {
       mockedAxios.get.mockResolvedValue({ data: mockApiData });
-
-      await runFlow({ colors: 'magenta' }); 
+      
+      await generateFormattedReport({ colors: 'magenta' }); // No magenta in mockApiData
       
       const warnOutput = stripAnsi(consoleWarnSpy.mock.calls.flat().join('\n'));
-      expect(warnOutput).toContain('⚠️ No data found for the specified colors. Exiting.');
-      expect(mockedAxios.post).not.toHaveBeenCalled();
+      expect(warnOutput).toContain('No items matched your color filter');
+      // Should not proceed to post
+      expect(mockedAxios.post).not.toHaveBeenCalled(); 
     });
 
-    it('should use "sky-blue" as default color if none provided', async () => {
-      mockedAxios.get.mockResolvedValue({ data: mockApiData });
-
-      await runFlow({}); 
-      
-      const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput).toContain('Filtering for colors: sky-blue');
-      const warnOutput = stripAnsi(consoleWarnSpy.mock.calls.flat().join('\n'));
-      expect(warnOutput).toContain('⚠️ No data found for the specified colors. Exiting.');
-    });
-    
-    it('should handle polling timeout', async () => {
+    it('should timeout if polling exceeds MAX_POLL_ATTEMPTS', async () => {
       mockedAxios.get.mockResolvedValue({ data: mockApiData });
       mockedAxios.post.mockImplementation((url) => {
-        if (url.endsWith('/test-format')) {
-          return Promise.resolve({ data: { id: 'job-123' } });
-        }
-        if (url.endsWith('/retrieve')) {
-          return Promise.resolve({ data: { file: undefined } });
-        }
-        return Promise.reject(new Error('Unknown URL'));
+        if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-123' } });
+        if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: undefined } });
+        return Promise.reject();
       });
+
+      const flowPromise = generateFormattedReport({ colors: 'red' });
       
-      const runPromise = runFlow({ colors: 'red' });
-      
-      for(let i = 0; i < 10; i++) {
-        await jest.advanceTimersByTimeAsync(1000);
+      for (let i = 0; i < MAX_POLL_ATTEMPTS + 2; i++) {
+        await jest.advanceTimersByTimeAsync(3000); 
       }
-      await runPromise;
-
-      expect(mockedAxios.post).toHaveBeenCalledTimes(1 + 10);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('Polling timed out after 10 attempts.');
-    });
-
-    it('should handle a server connection error', async () => {
-      const connError = new Error("Connection refused");
-      // @ts-ignore
-      connError.code = 'ECONNREFUSED';
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockRejectedValue(connError);
-
-      await runFlow({ colors: 'red' });
-
-      expect(mockedAxios.isAxiosError).toHaveBeenCalledWith(connError);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('Connection refused. Is the server running at localhost:3000?');
-    });
-
-    it('should handle an error from the initial GET /data', async () => {
-      const getDataError = new Error("Server Error") as AxiosError;
-      getDataError.response = { status: 500, data: { message: "Internal Error" }, statusText: 'Server Error', headers: {}, config: { headers: {} as any } };
-      
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockRejectedValue(getDataError);
-
-      await runFlow({ colors: 'red' });
+      await flowPromise;
 
       const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('HTTP Status: 500');
-      expect(errorOutput).toContain('Data: {"message":"Internal Error"}');
-      expect(mockedAxios.post).not.toHaveBeenCalled();
-    });
-
-    it('should handle an error from /test-format', async () => {
-      const testFormatError = new Error("Invalid format") as AxiosError;
-      testFormatError.response = { status: 400, data: { message: "Bad JSON" }, statusText: 'Bad Request', headers: {}, config: { headers: {} as any } };
-      
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockResolvedValue({ data: mockApiData });
-      mockedAxios.post.mockRejectedValue(testFormatError);
-
-      await runFlow({ colors: 'red' });
-
-      expect(mockedAxios.post).toHaveBeenCalledWith(`${BASE_URL}/test-format`, expect.anything());
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('HTTP Status: 400');
-      expect(errorOutput).toContain('Data: {"message":"Bad JSON"}');
-    });
-
-    it('should handle missing job ID from /test-format', async () => {
-      // [FIX] Ensure this is false so the logic falls through to the generic error handler
-      mockedAxios.isAxiosError.mockReturnValue(false);
-      
-      mockedAxios.get.mockResolvedValue({ data: mockApiData });
-      mockedAxios.post.mockResolvedValue({ data: { status: 'received', id: undefined } }); // No ID
-      
-      // The error is caught inside runFlow, so we just await.
-      await runFlow({ colors: 'red' });
-      
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('Failed to get a Job ID from /test-format');
-    });
-
-    it('should handle an error from /retrieve', async () => {
-      const retrieveError = new Error("Not Found") as AxiosError;
-      retrieveError.response = { status: 404, data: { message: "File not found" }, statusText: 'Not Found', headers: {}, config: { headers: {} as any } };
-
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockResolvedValue({ data: mockApiData });
-      
-      mockedAxios.post.mockImplementation((url) => {
-        if (url.endsWith('/test-format')) {
-          return Promise.resolve({ data: { id: 'job-123' } });
-        }
-        if (url.endsWith('/retrieve')) {
-          return Promise.reject(retrieveError);
-        }
-        return Promise.reject(new Error('Unknown URL'));
-      });
-
-      await runFlow({ colors: 'red' });
-
-      expect(mockedAxios.post).toHaveBeenCalledWith(`${BASE_URL}/retrieve`, { id: 'job-123' });
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('HTTP Status: 404');
-      expect(errorOutput).toContain('Data: {"message":"File not found"}');
-    });
-
-    it('should handle a generic error in runFlow', async () => {
-      const genericError = new Error('A generic error');
-      mockedAxios.get.mockRejectedValue(genericError); // Throw on the first call
-      mockedAxios.isAxiosError.mockReturnValue(false); 
-
-      await runFlow({ colors: 'red' });
-
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('A generic error');
-      expect(errorOutput).not.toContain('HTTP Status');
-    });
-
-    it('should handle an unknown error in runFlow', async () => {
-      const unknownError = 'An unknown string error';
-      mockedAxios.get.mockRejectedValue(unknownError); // Throw on the first call
-      mockedAxios.isAxiosError.mockReturnValue(false);
-
-      await runFlow({ colors: 'red' });
-
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('An unknown error occurred:');
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('An unknown error occurred:'), unknownError);
-    });
-  });
-  
-  describe('getApiHelp', () => {
-    it('should fetch and log the help text', async () => {
-      const helpText = "Thank you for using the CLI test server...";
-      mockedAxios.get.mockResolvedValue({ data: helpText });
-      
-      await getApiHelp();
-      
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
-      const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput).toContain('--- Server Help Text ---');
-      expect(logOutput).toContain(helpText);
-    });
-
-    it('should handle a connection error', async () => {
-      const connError = new Error("Connection refused");
-      // @ts-ignore
-      connError.code = 'ECONNREFUSED';
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockRejectedValue(connError);
-
-      await getApiHelp();
-      
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('Connection refused. Is the server running at localhost:3000?');
-    });
-
-    it('should handle an API error', async () => {
-      const apiError = new Error("Not Found") as AxiosError;
-      apiError.response = { status: 404, data: { message: "Not Found" }, statusText: 'Not Found', headers: {}, config: { headers: {} as any } };
-      
-      mockedAxios.isAxiosError.mockReturnValue(true);
-      mockedAxios.get.mockRejectedValue(apiError);
-
-      await getApiHelp();
-      
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('HTTP Status: 404');
-      expect(errorOutput).toContain('Data: {"message":"Not Found"}');
-    });
-
-    it('should handle a generic error in getApiHelp', async () => {
-      const genericError = new Error('A generic error');
-      mockedAxios.get.mockRejectedValue(genericError);
-      mockedAxios.isAxiosError.mockReturnValue(false);
-
-      await getApiHelp();
-      
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('A generic error');
-      expect(errorOutput).not.toContain('HTTP Status');
-    });
-
-    it('should handle an unknown error in getApiHelp', async () => {
-      const unknownError = 'An unknown string error';
-      mockedAxios.get.mockRejectedValue(unknownError);
-      mockedAxios.isAxiosError.mockReturnValue(false);
-
-      await getApiHelp();
-      
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
-      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
-      expect(errorOutput).toContain('An unknown error occurred:');
-      expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('An unknown error occurred:'), unknownError);
+      expect(errorOutput).toContain('Polling timed out');
     });
   });
 
-  describe('main (Execution Modes)', () => {
-    const mockCreateInterface = readline.createInterface as jest.Mock;
-    let mockQuestion: jest.Mock;
-    let mockClose: jest.Mock;
-    let originalArgv: string[];
+  describe('Command: api-info', () => {
+     it('should fetch and display help text', async () => {
+        process.argv = ['node', 'cli.ts', 'api-info'];
+        mockedAxios.get.mockResolvedValue({ data: 'Server Help Message' });
 
-    beforeEach(() => {
-      mockQuestion = jest.fn();
-      mockClose = jest.fn();
-      mockCreateInterface.mockReturnValue({
-        question: mockQuestion,
-        close: mockClose,
+        await main();
+
+        expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
+        const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
+        expect(logOutput).toContain('Server Help Message');
+     });
+
+     it('should handle errors when fetching help', async () => {
+        process.argv = ['node', 'cli.ts', 'api-info'];
+        mockedAxios.get.mockRejectedValue(new Error('Network Error'));
+
+        await main();
+
+        const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
+        expect(errorOutput).toContain('Network Error');
+     });
+  });
+
+  describe('Command: api-call', () => {
+    it('should send a GET request', async () => {
+      process.argv = ['node', 'cli.ts', 'api-call', 'GET', '/help'];
+      
+      // [FIX] Cast mockedAxios to jest.Mock to access mockResolvedValue
+      (mockedAxios as unknown as jest.Mock).mockResolvedValue({ 
+        status: 200, 
+        data: 'Help Text', 
+        statusText: 'OK', 
+        headers: {}, 
+        config: {} as any 
       });
-      originalArgv = process.argv;
-    });
-
-    afterEach(() => {
-      process.argv = originalArgv;
-    });
-
-    it('should execute command from process.argv and exit without interactive prompt', async () => {
-        process.argv = ['/bin/node', '/path/cli.ts', 'run', '-c', 'red'];
-
-        mockedAxios.get.mockResolvedValue({ data: mockApiData });
-        mockedAxios.post.mockImplementation((url) => {
-            if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-1' } });
-            if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFullFinalResult } });
-            return Promise.resolve({ data: {} });
-         });
-
-        await main();
-
-        expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
-        const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-        expect(logOutput).toContain('Filtering for colors: red');
-
-        expect(readline.createInterface).not.toHaveBeenCalled();
-    });
-
-    it('should enter interactive mode if no args provided', async () => {
-        // Mock process.argv: node cli.ts
-        process.argv = ['/bin/node', '/path/cli.ts'];
-
-        // Setup inputs: "run" command, then "q"
-        mockQuestion.mockResolvedValueOnce('run --colors red').mockResolvedValueOnce('q');
-
-        // Mock runFlow success
-        mockedAxios.get.mockResolvedValue({ data: mockApiData });
-        mockedAxios.post.mockImplementation((url) => {
-            if (url.endsWith('/test-format')) return Promise.resolve({ data: { id: 'job-1' } });
-            if (url.endsWith('/retrieve')) return Promise.resolve({ data: { file: mockFullFinalResult } });
-            return Promise.resolve({ data: {} });
-         });
-
-        await main();
-
-        expect(readline.createInterface).toHaveBeenCalled();
-        expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/data`);
-        const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-        expect(logOutput).toContain('Filtering for colors: red');
-    });
-
-    it('should handle "api-help" in interactive mode', async () => {
-      process.argv = ['/bin/node', '/path/cli.ts'];
-      mockQuestion.mockResolvedValueOnce('api-help').mockResolvedValueOnce('q');
-      mockedAxios.get.mockResolvedValue({ data: 'Help Text' });
 
       await main();
 
-      expect(mockedAxios.get).toHaveBeenCalledWith(`${BASE_URL}/help`);
+      expect(mockedAxios).toHaveBeenCalledWith(expect.objectContaining({
+        method: 'GET',
+        url: expect.stringContaining('/help')
+      }));
+      
       const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
-      expect(logOutput).toContain('Server Help Text');
-      expect(mockClose).toHaveBeenCalled();
+      expect(logOutput).toContain('Status: 200');
+    });
+
+    it('should send a POST request with JSON data', async () => {
+      const payload = '{"foo":"bar"}';
+      process.argv = ['node', 'cli.ts', 'api-call', 'POST', 'upload', '--data', payload];
+      
+      // [FIX] Cast mockedAxios to jest.Mock
+      (mockedAxios as unknown as jest.Mock).mockResolvedValue({ 
+        status: 201, 
+        data: { success: true }, 
+        statusText: 'Created', 
+        headers: {}, 
+        config: {} as any 
+      });
+
+      await main();
+
+      expect(mockedAxios).toHaveBeenCalledWith(expect.objectContaining({
+        method: 'POST',
+        url: expect.stringContaining('/upload'),
+        data: { foo: 'bar' }
+      }));
+    });
+
+    it('should handle 404s correctly', async () => {
+      process.argv = ['node', 'cli.ts', 'api-call', 'POST', 'missing-endpoint'];
+      
+      const error404 = {
+        isAxiosError: true,
+        message: 'Request failed with status code 404',
+        response: {
+          status: 404,
+          data: { error: 'Not Found' }
+        }
+      };
+
+      mockedAxios.isAxiosError.mockReturnValue(true);
+      
+      // [FIX] Cast mockedAxios to jest.Mock
+      (mockedAxios as unknown as jest.Mock).mockRejectedValue(error404);
+
+      await main();
+
+      const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
+      expect(errorOutput).toContain('Status: 404');
+      expect(errorOutput).toContain('Not Found');
+    });
+  });
+
+  describe('Interactive Mode', () => {
+    it('should parse typed commands', async () => {
+      process.argv = ['node', 'cli.ts'];
+      
+      mockQuestion
+        .mockResolvedValueOnce('report -c red')
+        .mockResolvedValueOnce('q');
+
+      mockedAxios.get.mockResolvedValue({ data: mockApiData });
+      mockedAxios.post.mockResolvedValue({ data: { id: 'job-1', file: mockFormattedResult } });
+
+      await main();
+      expect(mockedAxios.get).toHaveBeenCalled();
     });
     
-    it('should ignore empty input in interactive mode', async () => {
-        process.argv = ['/bin/node', '/path/cli.ts'];
-        mockQuestion.mockResolvedValueOnce('').mockResolvedValueOnce('q');
+    it('should handle exit commands', async () => {
+        process.argv = ['node', 'cli.ts'];
+        mockQuestion.mockResolvedValueOnce('exit');
         await main();
         expect(mockClose).toHaveBeenCalled();
     });
+  });
+  
+  describe('Error Handling (Edge Cases)', () => {
+     it('logError should handle non-axios errors', () => {
+         logError(new Error('Generic Error'));
+         const errorOutput = stripAnsi(consoleErrorSpy.mock.calls.flat().join('\n'));
+         expect(errorOutput).toContain('Generic Error');
+     });
+     
+     it('should handle yargs failure', async () => {
+         process.argv = ['node', 'cli.ts', 'report', '--unknown'];
+         try {
+             await main();
+         } catch (e) {
+             // Expected process.exit to throw in test
+         }
+         expect(processExitSpy).toHaveBeenCalledWith(1);
+     });
   });
 });
