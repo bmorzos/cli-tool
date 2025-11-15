@@ -187,7 +187,6 @@ describe('CLI Tool', () => {
     it('should send a GET request', async () => {
       process.argv = ['node', 'cli.ts', 'api-call', 'GET', '/help'];
       
-      // [FIX] Cast mockedAxios to jest.Mock to access mockResolvedValue
       (mockedAxios as unknown as jest.Mock).mockResolvedValue({ 
         status: 200, 
         data: 'Help Text', 
@@ -211,7 +210,6 @@ describe('CLI Tool', () => {
       const payload = '{"foo":"bar"}';
       process.argv = ['node', 'cli.ts', 'api-call', 'POST', 'upload', '--data', payload];
       
-      // [FIX] Cast mockedAxios to jest.Mock
       (mockedAxios as unknown as jest.Mock).mockResolvedValue({ 
         status: 201, 
         data: { success: true }, 
@@ -243,7 +241,6 @@ describe('CLI Tool', () => {
 
       mockedAxios.isAxiosError.mockReturnValue(true);
       
-      // [FIX] Cast mockedAxios to jest.Mock
       (mockedAxios as unknown as jest.Mock).mockRejectedValue(error404);
 
       await main();
@@ -287,11 +284,10 @@ describe('CLI Tool', () => {
      it('should handle yargs failure', async () => {
          process.argv = ['node', 'cli.ts', 'report', '--unknown'];
          try {
-             await main();
-         } catch (e) {
-             // Expected process.exit to throw in test
-         }
-         expect(processExitSpy).toHaveBeenCalledWith(1);
-     });
-  });
-});
+            await main();
+        } catch (e) {
+        }
+        expect(processExitSpy).toHaveBeenCalledWith(1);
+    });
+ });
+}
