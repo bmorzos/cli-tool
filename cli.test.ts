@@ -93,7 +93,7 @@ describe('CLI Tool', () => {
     process.argv = originalArgv;
   });
 
-  describe('Unit Logic', () => {
+  describe('Unit Tests', () => {
     it('filterDataByColor should be case-insensitive', () => {
       const result = filterDataByColor(mockApiData.data as TestItem[], ['TESTCOLOR']);
       expect(result).toHaveLength(1);
@@ -113,7 +113,7 @@ describe('CLI Tool', () => {
     });
   });
 
-  describe('generateFormattedReport (Integration)', () => {
+  describe('Command: report', () => {
     it('should execute the full flow successfully', async () => {
       mockedAxios.get.mockResolvedValue({ data: mockApiData });
       mockedAxios.post.mockImplementation((url) => {
@@ -284,10 +284,10 @@ describe('CLI Tool', () => {
      it('should handle yargs failure', async () => {
          process.argv = ['node', 'cli.ts', 'report', '--unknown'];
          try {
-            await main();
-        } catch (e) {
-        }
-        expect(processExitSpy).toHaveBeenCalledWith(1);
-    });
- });
-}
+             await main();
+         } catch (e) {
+         }
+         expect(processExitSpy).toHaveBeenCalledWith(1);
+     });
+  });
+});
