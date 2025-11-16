@@ -151,10 +151,9 @@ export async function generateFormattedReport(argv: { colors?: string }) {
       return;
     }
     console.log(`> Found ${filtered.length} items.`);
-
     console.log(`${colors.dim}Submitting for formatting...${colors.reset}`);
-    const { data: job } = await axios.post(`${BASE_URL}/test-format`, { tests: filtered });
     
+    const { data: job } = await axios.post(`${BASE_URL}/test-format`, { tests: filtered });
     if (!job.id) throw new Error("No Job ID returned!");
     console.log(`> Job ID: ${job.id}`);
 
@@ -227,7 +226,7 @@ export async function main() {
         'Execute a raw HTTP request against the server for debugging or utility use.', 
         (y) => y
             .positional('method', { choices: ['GET', 'POST', 'PATCH', 'DELETE'] as const, type: 'string', description: 'HTTP method to use' })
-            .positional('endpoint', { type: 'string', description: 'The server path (e.g., /status or /data)' })
+            .positional('endpoint', { type: 'string', description: 'The server path (e.g., /retrieve or /data)' })
             .option('data', { alias: 'd', type: 'string', description: 'JSON payload (stringified) for POST/PATCH requests.' }),
         async (argv) => {
             try {
@@ -273,7 +272,7 @@ export async function main() {
     shouldExitOnError = false;
     const rl = readline.createInterface({ input, output });
     displayBlockHeader(colors.whiteOnBlue);
-    console.log(`${colors.dim}Type "report -c red,blue" or "api-call GET status". Type "q" to exit.${colors.reset}`);
+    console.log(`${colors.dim}Type "report -c red,blue" or "api-call GET data". Type "q" to exit.${colors.reset}`);
 
     while (true) {
       const line = await rl.question(`\n${colors.cyan}CLI> ${colors.reset}`);
