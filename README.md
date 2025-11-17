@@ -1,3 +1,7 @@
+<p align="center">
+  <img alt="A demo of the interactive shell" src="./images/StartingImage.jpg">
+</p>
+
 # QA CLI Tool
 
 This repository contains a robust TypeScript CLI for interacting with a test data API. It provides a clean interface for initiating asynchronous jobs, polling for results, and generating formatted reports directly in the terminal.
@@ -15,6 +19,7 @@ The tool features an interactive shell for exploratory use and supports single-c
 * **Strict Command Validation:** Uses `yargs` to ensure all commands and options are valid, providing helpful error messages to the user.
 * **High Test Coverage:** Validated with a comprehensive Jest test suite covering unit logic, command execution, asynchronous polling, and error states.
 
+![Test coverage with Jest](./images/TestCoverage.jpg)
 ---
 
 ## Prerequisites
@@ -60,16 +65,7 @@ npm start
 ```
 
 **Output:**
-```text
-  ██████  ███    ██ ███████ ██████  ██████  ██ ███████ ███████
- ██    ██ ████   ██ ██      ██   ██ ██   ██ ██ ██      ██
- ██    ██ ██ ██  ██ █████   ██████  ██████  ██ █████   █████
- ██    ██ ██  ██ ██ ██      ██   ██ ██   ██ ██ ██      ██
-  ██████  ██   ████ ███████ ██████  ██   ██ ██ ███████ ██
-Type "report -c red,blue" or "api-call GET help". Type "q" to exit.
-
-CLI>
-```
+![npm run start](./images/StartingImage.jpg)
 
 ### Single Command Mode
 
@@ -85,6 +81,7 @@ npm start -- api-info
 # Make a raw API call
 npm start -- api-call GET data
 ```
+![running a report](./images/ReportColors.jpg)
 
 ---
 
