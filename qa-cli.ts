@@ -146,7 +146,11 @@ export function logError(error: unknown) {
 }
 
 export async function generateFormattedReport(argv: { colors?: string[] }) {
-  const colorsToFilter = argv.colors || ['sky-blue'];
+  const rawColors = argv.colors || ['sky-blue'];
+  const colorsToFilter = rawColors
+    .flatMap(color => color.split(',')) // Split items like 'green,' into ['green', '']
+    .map(c => c.trim()) // Trim whitespace
+    .filter(c => c.length > 0);
   console.log(`\nInitiating Report Process. Filter: [${colorsToFilter.join(', ')}]`);
 
   try {
@@ -287,8 +291,7 @@ export async function main() {
       const line = await rl.question(`\n${colors.cyan}CLI> ${colors.reset}`);
       if (['q', 'quit', 'exit'].includes(line.trim().toLowerCase())) break;
       if (line.trim()) {
-        //TODO Robust arg splitting that respects quotes would be better, but simple split works for now
-        await parser.parse(line.trim().split(/\s+/));
+        await parser.parse(line.trim());
       }
     }
     rl.close();
