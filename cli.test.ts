@@ -122,7 +122,7 @@ describe('CLI Tool', () => {
         return Promise.reject(new Error('Unknown URL'));
       });
 
-      await generateFormattedReport({ colors: 'red' });
+      await generateFormattedReport({ colors: ['red'] });
       
       const logOutput = stripAnsi(consoleLogSpy.mock.calls.flat().join('\n'));
       expect(logOutput).toContain('Job ID: job-123');
@@ -132,7 +132,7 @@ describe('CLI Tool', () => {
     it('should handle cases where filter matches nothing', async () => {
       mockedAxios.get.mockResolvedValue({ data: mockApiData });
       
-      await generateFormattedReport({ colors: 'magenta' }); // No magenta in mockApiData
+      await generateFormattedReport({ colors: ['magenta'] }); // No magenta in mockApiData
       
       const warnOutput = stripAnsi(consoleWarnSpy.mock.calls.flat().join('\n'));
       expect(warnOutput).toContain('No items matched your color filter');
@@ -148,7 +148,7 @@ describe('CLI Tool', () => {
         return Promise.reject();
       });
 
-      const flowPromise = generateFormattedReport({ colors: 'red' });
+      const flowPromise = generateFormattedReport({ colors: ['red'] });
       
       for (let i = 0; i < MAX_POLL_ATTEMPTS + 2; i++) {
         await jest.advanceTimersByTimeAsync(3000); 

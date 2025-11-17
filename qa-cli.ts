@@ -66,6 +66,7 @@ let formattedLines: string[] = [];
 const addLine = (text: string, color: string = colors.reset) => formattedLines.push(`${color}${text}${colors.reset}`);
 const addSeparator = (char: string, color: string, count: number = 50) => addLine(char.repeat(count), color);
 
+
 function displayBlockHeader(color: string = colors.blue) {
   formattedLines = [];
   addSeparator(' ', colors.blueOnBlue, 69);
@@ -85,11 +86,18 @@ function displayASCIIReportHeader(color: string = colors.blue) {
   addLine(` ██    ██ ██ ▀██ ██▀██ ██▄▄▄     ██   ██▄▄▄ ▄▄██▀   ██     ██   ██ ██▄▄▄ ▄▄██▀ ▀███▀ ██▄▄▄  ██  ▄▄██▀ `, color);
   addSeparator(' ', color, 102);
 }
-                                                                                                                         
+
+export const normalizeColor = (c: string): string => {
+  return c.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
 export function filterDataByColor(data: TestItem[], filterColors: string[]): TestItem[] {
-  return data.filter(item => 
-    filterColors.some(filter => item.color.toLowerCase() === filter.toLowerCase())
-  );
+  const normalizedFilterColors = filterColors.map(normalizeColor);
+
+  return data.filter(item => {
+    const normalizedItemColor = normalizeColor(item.color);
+    return normalizedFilterColors.includes(normalizedItemColor);
+  });
 }
 
 export function formatResult(data: FormattedResult): string {
@@ -137,8 +145,8 @@ export function logError(error: unknown) {
   }
 }
 
-export async function generateFormattedReport(argv: { colors?: string }) {
-  const colorsToFilter = (argv.colors || 'sky-blue').split(',').map(c => c.trim());
+export async function generateFormattedReport(argv: { colors?: string[] }) {
+  const colorsToFilter = argv.colors || ['sky-blue'];
   console.log(`\nInitiating Report Process. Filter: [${colorsToFilter.join(', ')}]`);
 
   try {
@@ -204,9 +212,10 @@ export async function main() {
       'Generate a formatted test result report, filtered by color group.', 
       (y) => y.option('colors', { 
           alias: 'c', 
-          type: 'string', 
-          default: 'sky-blue',
-          description: 'Comma-separated list of test color groups to include in the report.'
+          type: 'array',
+          string: true,
+          default: ['sky-blue'],
+          description: 'List of test color groups (space or comma-separated).'
       }),
       (argv) => generateFormattedReport(argv)
     )

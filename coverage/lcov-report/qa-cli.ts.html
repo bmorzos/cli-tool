@@ -23,9 +23,9 @@
         <div class='clearfix'>
             
             <div class='fl pad1y space-right2'>
-                <span class="strong">98.5% </span>
+                <span class="strong">98.54% </span>
                 <span class="quiet">Statements</span>
-                <span class='fraction'>132/134</span>
+                <span class='fraction'>135/137</span>
             </div>
         
             
@@ -39,14 +39,14 @@
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Functions</span>
-                <span class='fraction'>23/23</span>
+                <span class='fraction'>22/22</span>
             </div>
         
             
             <div class='fl pad1y space-right2'>
                 <span class="strong">100% </span>
                 <span class="quiet">Lines</span>
-                <span class='fraction'>123/123</span>
+                <span class='fraction'>127/127</span>
             </div>
         
             
@@ -354,7 +354,16 @@
 <a name='L289'></a><a href='#L289'>289</a>
 <a name='L290'></a><a href='#L290'>290</a>
 <a name='L291'></a><a href='#L291'>291</a>
-<a name='L292'></a><a href='#L292'>292</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
+<a name='L292'></a><a href='#L292'>292</a>
+<a name='L293'></a><a href='#L293'>293</a>
+<a name='L294'></a><a href='#L294'>294</a>
+<a name='L295'></a><a href='#L295'>295</a>
+<a name='L296'></a><a href='#L296'>296</a>
+<a name='L297'></a><a href='#L297'>297</a>
+<a name='L298'></a><a href='#L298'>298</a>
+<a name='L299'></a><a href='#L299'>299</a>
+<a name='L300'></a><a href='#L300'>300</a>
+<a name='L301'></a><a href='#L301'>301</a></td><td class="line-coverage quiet"><span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">1x</span>
@@ -423,6 +432,7 @@
 <span class="cline-any cline-yes">8x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
 <span class="cline-any cline-yes">2x</span>
@@ -443,7 +453,14 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">1x</span>
+<span class="cline-any cline-yes">15x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">1x</span>
 <span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
+<span class="cline-any cline-yes">5x</span>
+<span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-yes">10x</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -559,6 +576,7 @@
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-yes">2x</span>
+<span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
 <span class="cline-any cline-neutral">&nbsp;</span>
@@ -713,6 +731,7 @@ let formattedLines: string[] = [];
 const addLine = (text: string, color: string = colors.reset) =&gt; formattedLines.push(`${color}${text}${colors.reset}`);
 const addSeparator = (char: string, color: string, count: number = <span class="branch-0 cbranch-no" title="branch not covered" >50)</span> =&gt; addLine(char.repeat(count), color);
 &nbsp;
+&nbsp;
 function displayBlockHeader(color: string = <span class="branch-0 cbranch-no" title="branch not covered" >colors.blue)</span> {
   formattedLines = [];
   addSeparator(' ', colors.blueOnBlue, 69);
@@ -732,11 +751,18 @@ function displayASCIIReportHeader(color: string = <span class="branch-0 cbranch-
   addLine(` ██    ██ ██ ▀██ ██▀██ ██▄▄▄     ██   ██▄▄▄ ▄▄██▀   ██     ██   ██ ██▄▄▄ ▄▄██▀ ▀███▀ ██▄▄▄  ██  ▄▄██▀ `, color);
   addSeparator(' ', color, 102);
 }
-                                                                                                                         
+&nbsp;
+export const normalizeColor = (c: string): string =&gt; {
+  return c.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+&nbsp;
 export function filterDataByColor(data: TestItem[], filterColors: string[]): TestItem[] {
-  return data.filter(item =&gt; 
-    filterColors.some(filter =&gt; item.color.toLowerCase() === filter.toLowerCase())
-  );
+  const normalizedFilterColors = filterColors.map(normalizeColor);
+&nbsp;
+  return data.filter(item =&gt; {
+    const normalizedItemColor = normalizeColor(item.color);
+    return normalizedFilterColors.includes(normalizedItemColor);
+  });
 }
 &nbsp;
 export function formatResult(data: FormattedResult): string {
@@ -784,8 +810,8 @@ export function logError(error: unknown) {
   }
 }
 &nbsp;
-export async function generateFormattedReport(argv: { colors?: string }) {
-  const colorsToFilter = (argv.colors || <span class="branch-1 cbranch-no" title="branch not covered" >'sky-blue')</span>.split(',').map(c =&gt; c.trim());
+export async function generateFormattedReport(argv: { colors?: string[] }) {
+  const colorsToFilter = argv.colors || <span class="branch-1 cbranch-no" title="branch not covered" >['sky-blue'];</span>
   console.log(`\nInitiating Report Process. Filter: [${colorsToFilter.join(', ')}]`);
 &nbsp;
   try {
@@ -851,9 +877,10 @@ export async function main() {
       'Generate a formatted test result report, filtered by color group.', 
       (y) =&gt; y.option('colors', { 
           alias: 'c', 
-          type: 'string', 
-          default: 'sky-blue',
-          description: 'Comma-separated list of test color groups to include in the report.'
+          type: 'array',
+          string: true,
+          default: ['sky-blue'],
+          description: 'List of test color groups (space or comma-separated).'
       }),
       (argv) =&gt; generateFormattedReport(argv)
     )
@@ -943,7 +970,7 @@ if (require.main === module) {
             <div class='footer quiet pad2 space-top1 center small'>
                 Code coverage generated by
                 <a href="https://istanbul.js.org/" target="_blank" rel="noopener noreferrer">istanbul</a>
-                at 2025-11-16T22:38:31.130Z
+                at 2025-11-17T18:18:07.345Z
             </div>
         <script src="prettify.js"></script>
         <script>
