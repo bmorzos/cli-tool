@@ -134,13 +134,24 @@ export function formatResult(data: FormattedResult): string {
 
 export function logError(error: unknown) {
   console.error(`\n${colors.red}--- ERROR ---${colors.reset}`);
+  
   if (axios.isAxiosError(error)) {
-    const status = error.response?.status || 'Unknown';
-    console.error(`Status: ${status}`);
-    // Use logical OR to safely fallback if data is missing
-    const msg = error.response?.data || error.message;
-    console.error(`Message: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}`);
+      const msg = error.response.data || error.message;
+      console.error(`Message: ${typeof msg === 'object' ? JSON.stringify(msg) : msg}`);
+      
+    } else if (error.request) {
+      console.error(`Status: Connection Failed`);
+      console.error(`Code: ${error.code || 'No Code'}`);
+      console.error(`Hint: Is the server running at ${BASE_URL}?`);
+      
+    } else {
+      console.error(`Status: Request Configuration Error`);
+      console.error(`Message: ${error.message}`);
+    }
   } else {
+    // Non-Axios error
     console.error(String(error));
   }
 }
@@ -149,7 +160,7 @@ export async function generateFormattedReport(argv: { colors?: string[] }) {
   const rawColors = argv.colors || ['sky-blue'];
   const colorsToFilter = rawColors
     .flatMap(color => color.split(',')) // Split items like 'green,' into ['green', '']
-    .map(c => c.trim()) // Trim whitespace
+    .map(c => c.trim())
     .filter(c => c.length > 0);
   console.log(`\nInitiating Report Process. Filter: [${colorsToFilter.join(', ')}]`);
 
@@ -262,9 +273,6 @@ export async function main() {
     .example(`$0 report -c "sky blue"`, 'Generate a report for color groups with spaces in their name (e.g., "sky blue").')
     .example('$0 api-info', 'Retrieve and print the server API documentation.')
     .example('$0 api-call GET data', 'Fetch and display the raw, unfiltered data set from the API.')
-    .example('$0 api-call GET help', 'Quickly retrieve the server’s API usage documentation.')
-    .example('$0 api-call POST job-status -d \'{"id": "job-123"}\'', 'Check the status of a specific processing job by ID.')
-    .example('$0 api-call PATCH config -d \'{"timeout": 5000}\'', 'Send a configuration update to a specific endpoint.')
     
     .strict()
     .help()
